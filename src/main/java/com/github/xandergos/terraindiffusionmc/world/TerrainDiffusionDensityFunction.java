@@ -4,21 +4,14 @@ import com.github.xandergos.terraindiffusionmc.config.TerrainDiffusionConfig;
 import com.github.xandergos.terraindiffusionmc.pipeline.LocalTerrainProvider;
 import com.github.xandergos.terraindiffusionmc.pipeline.LocalTerrainProvider.HeightmapData;
 import com.mojang.serialization.MapCodec;
-import net.minecraft.util.dynamic.CodecHolder;
-import net.minecraft.world.gen.densityfunction.DensityFunction;
+import net.minecraft.util.KeyDispatchDataCodec;
+import net.minecraft.world.level.levelgen.DensityFunction;
 
 public class TerrainDiffusionDensityFunction implements DensityFunction {
     public static final MapCodec<TerrainDiffusionDensityFunction> CODEC =
             MapCodec.unit(TerrainDiffusionDensityFunction::new);
 
-    public static final CodecHolder<TerrainDiffusionDensityFunction> CODEC_HOLDER = CodecHolder.of(CODEC);
-
-    @Override
-    public double sample(DensityFunction.NoisePos pos) {
-        return compute(pos);
-    }
-
-    public double compute(DensityFunction.NoisePos context) {
+    public double compute(DensityFunction.FunctionContext context) {
         int x = context.blockX();
         int z = context.blockZ();
         int y = context.blockY();
@@ -47,12 +40,12 @@ public class TerrainDiffusionDensityFunction implements DensityFunction {
     }
 
     @Override
-    public void fill(double[] densities, DensityFunction.EachApplier applier) {
-        applier.fill(densities, this);
+    public void fillArray(double[] densities, DensityFunction.ContextProvider applier) {
+        applier.fillAllDirectly(densities, this);
     }
 
     @Override
-    public DensityFunction apply(DensityFunction.DensityFunctionVisitor visitor) {
+    public DensityFunction mapAll(DensityFunction.Visitor visitor) {
         return visitor.apply(this);
     }
 
@@ -67,7 +60,7 @@ public class TerrainDiffusionDensityFunction implements DensityFunction {
     }
 
     @Override
-    public CodecHolder<? extends DensityFunction> getCodecHolder() {
-        return CODEC_HOLDER;
+    public KeyDispatchDataCodec<TerrainDiffusionDensityFunction> codec() {
+        return KeyDispatchDataCodec.of(CODEC);
     }
 }

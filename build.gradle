@@ -1,6 +1,13 @@
 plugins {
-    id 'fabric-loom' version '1.13-SNAPSHOT'
+    id 'java'
     id 'maven-publish'
+    id 'com.gradleup.shadow' version '9.4.1'
+    id 'net.minecraftforge.gradle' version '[7.0.3,8)'
+}
+
+tasks.named('shadowJar') {
+    archiveClassifier.set('') // Removes the '-all' suffix
+    configurations = [project.configurations.shadow]
 }
 
 import groovy.json.JsonOutput
@@ -28,76 +35,75 @@ version = "${project.mod_version}-${buildVariant}+${project.minecraft_version}"
 group = project.maven_group
 
 base {
-    archivesName = project.archives_base_name
+    archivesName = project.mod_id
 }
 
-loom {
-    splitEnvironmentSourceSets()
-
-    mods {
-        "terrain-diffusion-mc" {
-            sourceSet sourceSets.main
-            sourceSet sourceSets.client
-        }
-    }
+minecraft {
+    mappings channel: 'official', version: "${project.minecraft_version}"
 
     runs {
         configureEach {
-            ideConfigGenerated true
-        }
-    }
-}
+            workingDir = layout.projectDirectory.dir('run')
 
-fabricApi {
-    configureDataGeneration {
-        client = true
+            systemProperty 'eventbus.api.strictRuntimeChecks', 'true'
+            systemProperty 'forge.enabledGameTestNamespaces', 'terrain_diffusion_mc'
+        }
+
+        register('client')
+
+        register('server') {
+            args '--nogui'
+        }
+
+        register('gameTestServer')
+
+        register('data') {
+            workingDir = layout.projectDirectory.dir('run-data')
+
+            args '--mod', 'terrain_diffusion_mc', '--all', '--output', layout.projectDirectory.dir('src/generated/resources'), '--existing', layout.projectDirectory.dir('src/main/resources')
+        }
     }
 }
 
 repositories {
-    // Add repositories to retrieve artifacts from in here.
-    // You should only use this when depending on other mods because
-    // Loom adds the essential maven repositories to download Minecraft and libraries from automatically.
-    // See https://docs.gradle.org/current/userguide/declaring_repositories.html
-    // for more information about repositories.
+    minecraft.mavenizer(it)
+    maven fg.forgeMaven
+    maven fg.minecraftLibsMaven
+    mavenCentral()
     flatDir { dirs 'libs'}
 }
 
 dependencies {
-    // To change the versions see the gradle.properties file
-    minecraft "com.mojang:minecraft:${project.minecraft_version}"
-    mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
-    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
-
-    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+    implementation minecraft.dependency('net.minecraftforge:forge:1.21.11-61.1.0')
+    annotationProcessor 'net.minecraftforge:eventbus-validator:7.0.1'
 
     if (useCuda) {
         implementation "com.microsoft.onnxruntime:onnxruntime_gpu:1.20.0"
-        include "com.microsoft.onnxruntime:onnxruntime_gpu:1.20.0"
+        shadow "com.microsoft.onnxruntime:onnxruntime_gpu:1.20.0"
     } else if (useCpu) {
         implementation "com.microsoft.onnxruntime:onnxruntime:1.20.0"
-        include "com.microsoft.onnxruntime:onnxruntime:1.20.0"
+        shadow "com.microsoft.onnxruntime:onnxruntime:1.20.0"
     } else if (useDml) {
         implementation 'com.microsoft.onnxruntime:onnxruntime-dml:1.0'
-        include 'com.microsoft.onnxruntime:onnxruntime-dml:1.0'
+        shadow 'com.microsoft.onnxruntime:onnxruntime-dml:1.0'
     }
 }
 
 processResources {
-    dependsOn 'generateModelAssetManifest'
-    inputs.property "version", project.version
     inputs.property "minecraft_version", project.minecraft_version
-    inputs.property "loader_version", project.loader_version
+    inputs.property "forge_version", project.forge_version
+    inputs.property "mod_version", project.mod_version
+    inputs.property "mod_id", project.mod_id
     inputs.property "build_variant", buildVariant
+
+    filesMatching("META-INF/mods.toml") {
+        expand project.properties
+    }
+
+    dependsOn 'generateModelAssetManifest'
     filteringCharset "UTF-8"
     from(generatedManifestFile) {
         into ''
-    }
-
-    filesMatching("fabric.mod.json") {
-        expand "version": project.version,
-                "minecraft_version": project.minecraft_version,
-                "loader_version": project.loader_version
     }
     filesMatching("build-variant.properties") {
         expand "build_variant": buildVariant
@@ -133,7 +139,7 @@ java {
 
 jar {
     from("LICENSE") {
-        rename { "${it}_${project.archivesBaseName}" }
+        rename { "${it}_${project.mod_id}" }
     }
 }
 
@@ -145,7 +151,7 @@ tasks.withType(JavaExec).configureEach {
 publishing {
     publications {
         create("mavenJava", MavenPublication) {
-            artifactId = project.archives_base_name
+            artifactId = project.mod_id
             from components.java
         }
     }
@@ -163,6 +169,16 @@ task pipelineTest(type: JavaExec, dependsOn: compileJava) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.github.xandergos.terraindiffusionmc.pipeline.PipelineTest'
     jvmArgs '-Xmx8g'
+}
+
+def sha256Hex = { byte[] fileBytes ->
+    MessageDigest messageDigest = MessageDigest.getInstance('SHA-256')
+    byte[] digestBytes = messageDigest.digest(fileBytes)
+    StringBuilder hexBuilder = new StringBuilder(digestBytes.length * 2)
+    for (byte digestByte : digestBytes) {
+        hexBuilder.append(String.format('%02x', digestByte))
+    }
+    return hexBuilder.toString()
 }
 
 tasks.register('generateModelAssetManifest') {
@@ -230,14 +246,4 @@ def gradlewExecutable = rootProject.file(isWindows ? 'gradlew.bat' : 'gradlew').
 
 tasks.register('buildAll') {
     dependsOn 'buildCuda', 'buildDml', 'buildCpu'
-}
-
-String sha256Hex(byte[] fileBytes) {
-    MessageDigest messageDigest = MessageDigest.getInstance('SHA-256')
-    byte[] digestBytes = messageDigest.digest(fileBytes)
-    StringBuilder hexBuilder = new StringBuilder(digestBytes.length * 2)
-    for (byte digestByte : digestBytes) {
-        hexBuilder.append(String.format('%02x', digestByte))
-    }
-    return hexBuilder.toString()
 }

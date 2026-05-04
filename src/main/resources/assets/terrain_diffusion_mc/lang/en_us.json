@@ -1,0 +1,9 @@
+{
+  "generator.terrain_diffusion_mc.terrain_diffusion": "Terrain Diffusion",
+  "terrain_diffusion_mc.world_settings.title": "Terrain Settings",
+  "terrain_diffusion_mc.world_settings.open_button": "Terrain Settings",
+  "terrain_diffusion_mc.world_settings.scale": "World Scale",
+  "terrain_diffusion_mc.world_settings.world_scale_description": "Set World Scale for this world.",
+  "terrain_diffusion_mc.world_settings.scale_error": "Scale must be an integer >= 1"
+}
+

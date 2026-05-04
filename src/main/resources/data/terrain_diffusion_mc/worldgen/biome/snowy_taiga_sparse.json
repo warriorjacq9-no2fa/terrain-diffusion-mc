@@ -65,7 +65,7 @@
     [
       "minecraft:glow_lichen",
       "minecraft:patch_large_fern",
-      "terrain-diffusion-mc:trees_taiga_sparse",
+      "terrain_diffusion_mc:trees_taiga_sparse",
       "minecraft:flower_default",
       "minecraft:patch_grass_taiga_2",
       "minecraft:brown_mushroom_taiga",

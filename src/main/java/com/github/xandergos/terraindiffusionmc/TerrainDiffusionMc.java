@@ -8,66 +8,102 @@ import com.github.xandergos.terraindiffusionmc.world.TerrainDiffusionBiomeSource
 import com.github.xandergos.terraindiffusionmc.world.TerrainDiffusionDensityFunction;
 import com.github.xandergos.terraindiffusionmc.world.WorldScaleManager;
 import com.mojang.brigadier.context.CommandContext;
-import net.fabricmc.api.ModInitializer;
-import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
-import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
-import net.fabricmc.fabric.api.event.lifecycle.v1.ServerWorldEvents;
-import net.minecraft.registry.Registries;
-import net.minecraft.registry.Registry;
-import net.minecraft.server.command.ServerCommandSource;
-import net.minecraft.text.ClickEvent;
-import net.minecraft.text.MutableText;
-import net.minecraft.text.Text;
-import java.net.URI;
-import net.minecraft.util.Identifier;
-import net.minecraft.world.World;
+import com.mojang.serialization.MapCodec;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.commands.Commands;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.network.chat.ClickEvent;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.server.level.ServerLevel;
+
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.biome.BiomeSource;
+import net.minecraft.world.level.levelgen.DensityFunction;
+import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.RegisterCommandsEvent;
+import net.minecraftforge.event.server.ServerStartingEvent;
+import net.minecraftforge.event.level.LevelEvent;
+import net.minecraftforge.event.server.ServerStoppingEvent;
+import net.minecraftforge.eventbus.api.listener.SubscribeEvent;
+import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
+import net.minecraftforge.registries.DeferredRegister;
+import net.minecraftforge.registries.RegistryObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static net.minecraft.server.command.CommandManager.literal;
+import java.net.URI;
 
-public class TerrainDiffusionMc implements ModInitializer {
-    public static final String MOD_ID = "terrain-diffusion-mc";
+@Mod("terrain_diffusion_mc")
+public class TerrainDiffusionMc {
+    public static final String MOD_ID = "terrain_diffusion_mc";
     private static final Logger LOG = LoggerFactory.getLogger(TerrainDiffusionMc.class);
+    private static final DeferredRegister<MapCodec<? extends BiomeSource>> BIOME_SOURCES =
+            DeferredRegister.create(Registries.BIOME_SOURCE, MOD_ID);
+    private static final DeferredRegister<MapCodec<? extends DensityFunction>> DENSITY_FUNCTIONS =
+            DeferredRegister.create(Registries.DENSITY_FUNCTION_TYPE, MOD_ID);
 
-    @Override
-    public void onInitialize() {
-        LOG.info("Initializing terrain-diffusion-mc");
-        Registry.register(Registries.BIOME_SOURCE, Identifier.of(MOD_ID, "terrain_diffusion"), TerrainDiffusionBiomeSource.CODEC);
-        Registry.register(Registries.DENSITY_FUNCTION_TYPE, Identifier.of(MOD_ID, "terrain_diffusion"), TerrainDiffusionDensityFunction.CODEC);
+    public static final RegistryObject<MapCodec<TerrainDiffusionBiomeSource>> BIOME_SOURCE =
+            BIOME_SOURCES.register("terrain_diffusion", () -> TerrainDiffusionBiomeSource.CODEC);
+    public static final RegistryObject<MapCodec<? extends DensityFunction>> DENSITY_FUNCTION =
+            DENSITY_FUNCTIONS.register("terrain_diffusion", () -> TerrainDiffusionDensityFunction.CODEC);
+
+
+    public TerrainDiffusionMc(FMLJavaModLoadingContext ctx) {
+        LOG.info("Initializing terrain_diffusion_mc");
+        MinecraftForge.EVENT_BUS.register(this);
+        BIOME_SOURCES.register(ctx.getModBusGroup());
+        DENSITY_FUNCTIONS.register(ctx.getModBusGroup());
 
         ModelAssetManager.ensureAssetsReady();
         PipelineModels.load();
+    }
 
-        ServerLifecycleEvents.SERVER_STARTING.register(server -> LocalTerrainProvider.clearCache());
+    @SubscribeEvent
+    public void onServerStarting(ServerStartingEvent evt) {
+        LocalTerrainProvider.clearCache();
+    }
 
-        ServerWorldEvents.LOAD.register((server, world) -> {
-            if (world.getRegistryKey() == World.OVERWORLD) {
-                WorldScaleManager.initializeForWorld(world);
-                LocalTerrainProvider.init(world.getSeed());
-            }
-        });
+    @SubscribeEvent
+    public void onServerStopping(ServerStoppingEvent evt) {
+        ExplorerServer.stop();
+    }
 
-        ServerLifecycleEvents.SERVER_STOPPING.register(server -> ExplorerServer.stop());
+    @SubscribeEvent
+    public void onLevelLoad(LevelEvent.Load evt) {
+        if (!(evt.getLevel() instanceof ServerLevel level)) return;
 
-        CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
-                dispatcher.register(literal("td-explore").executes(TerrainDiffusionMc::executeExplore))
+        if(level.dimension() == Level.OVERWORLD) {
+            WorldScaleManager.initializeForWorld(level);
+            LocalTerrainProvider.init(level.getSeed());
+        }
+    }
+
+    @SubscribeEvent
+    public void onRegisterCommands(RegisterCommandsEvent evt) {
+        evt.getDispatcher().register(
+                Commands.literal("td-explore").executes(TerrainDiffusionMc::executeExplore)
         );
     }
 
-    private static int executeExplore(CommandContext<ServerCommandSource> ctx) {
+    private static int executeExplore(CommandContext<CommandSourceStack> ctx) {
         try {
             int port = ExplorerServer.startIfNotRunning();
             String url = "http://localhost:" + port;
-            MutableText link = Text.literal(url)
-                    .styled(s -> s.withClickEvent(new ClickEvent.OpenUrl(URI.create(url)))
-                                  .withUnderline(true));
-            ctx.getSource().sendFeedback(
-                    () -> Text.literal("Terrain Explorer: ").append(link),
-                    false);
+            MutableComponent link = Component.literal(url).withStyle(s -> s
+                    .withClickEvent(new ClickEvent.OpenUrl(URI.create(url)))
+                    .withUnderlined(true)
+            );
+            ctx.getSource().sendSuccess(
+                    () -> Component.literal("Terrain Explorer: ").append(link),
+                    false
+            );
         } catch (Exception e) {
             LOG.error("Failed to start terrain explorer", e);
-            ctx.getSource().sendError(Text.literal("Failed to start terrain explorer: " + e.getMessage()));
+            ctx.getSource().sendFailure(
+                    Component.literal("Failed to start terrain explorer: " + e.getMessage())
+            );
         }
         return 1;
     }

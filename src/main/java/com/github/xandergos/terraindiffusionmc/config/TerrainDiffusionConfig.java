@@ -1,15 +1,15 @@
 package com.github.xandergos.terraindiffusionmc.config;
 
-import net.fabricmc.loader.api.FabricLoader;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
 
+import net.minecraftforge.fml.loading.FMLPaths;
+
 public final class TerrainDiffusionConfig {
-    private static final String FILE_NAME = "terrain-diffusion-mc.properties";
+    private static final String FILE_NAME = "terrain_diffusion_mc.properties";
     private static final String RESOURCE_PATH = "/" + FILE_NAME;
     private static final Properties PROPERTIES = new Properties();
     private static final String DEFAULT_INFERENCE_DEVICE = "gpu";
@@ -88,7 +88,7 @@ public final class TerrainDiffusionConfig {
 
     private static Path resolveConfigPath() {
         try {
-            return FabricLoader.getInstance().getConfigDir().resolve(FILE_NAME);
+            return FMLPaths.CONFIGDIR.get().resolve(FILE_NAME);
         } catch (RuntimeException e) {
             System.err.println("Fabric Loader config directory unavailable: " + e.getMessage());
             return null;
