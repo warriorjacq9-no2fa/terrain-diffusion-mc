@@ -9,7 +9,7 @@ import java.util.Properties;
 import net.minecraftforge.fml.loading.FMLPaths;
 
 public final class TerrainDiffusionConfig {
-    private static final String FILE_NAME = "terrain_diffusion_mc.properties";
+    private static final String FILE_NAME = "terrain-diffusion-mc.properties";
     private static final String RESOURCE_PATH = "/" + FILE_NAME;
     private static final Properties PROPERTIES = new Properties();
     private static final String DEFAULT_INFERENCE_DEVICE = "gpu";
